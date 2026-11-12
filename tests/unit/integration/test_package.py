@@ -43,8 +43,10 @@ class TestPayloadVerifier:
         with pytest.raises(NotImplementedError):
             payload_verifier.metric_name  # noqa: B018
 
-        with pytest.raises(NotImplementedError):
-            payload_verifier.retrieve_public_key_payload()
+    def test_default_request_kwargs(self, metrics):
+        cache = integrations.PublicKeysCache(cache_time=10)
+        payload_verifier = integrations.PayloadVerifier(
+            metrics=metrics, public_keys_cache=cache
+        )
 
-        with pytest.raises(NotImplementedError):
-            payload_verifier.extract_public_keys({})
+        assert payload_verifier._public_key_request_kwargs() == {}

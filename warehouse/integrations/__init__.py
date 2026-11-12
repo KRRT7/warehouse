@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import base64
+import json
 import time
 
 from typing import cast
+
+import requests
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -92,11 +95,84 @@ class PayloadVerifier:
         self._metrics.increment(f"warehouse.{self.metric_name}.auth.success")
         return True
 
-    def retrieve_public_key_payload(self):
-        raise NotImplementedError
+    # Subclasses must provide these to use the default public key retrieval:
+    #  - ``public_key_api_error``: exception class taking ``(message, reason)``
+    #  - ``_session``: a ``requests``-like session
+    #  - ``_public_key_url``: the URL serving the public keys payload
+    #  - ``_public_key_api_name``: human-readable name used in error messages
+    public_key_api_error: type[Exception]
+    _session: requests.Session
+    _public_key_url: str
+    _public_key_api_name: str
 
-    def extract_public_keys(self, unused):
-        raise NotImplementedError
+    def _public_key_request_kwargs(self) -> dict:
+        return {}
+
+    def retrieve_public_key_payload(self):
+        try:
+            response = self._session.get(
+                self._public_key_url, **self._public_key_request_kwargs()
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.HTTPError as exc:
+            raise self.public_key_api_error(
+                f"Invalid response code {response.status_code}: {response.text[:100]}",
+                f"public_key_api.status.{response.status_code}",
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise self.public_key_api_error(
+                f"Non-JSON response received: {response.text[:100]}",
+                "public_key_api.invalid_json",
+            ) from exc
+        except requests.RequestException as exc:
+            raise self.public_key_api_error(
+                f"Could not connect to {self._public_key_api_name}",
+                "public_key_api.network_error",
+            ) from exc
+
+    def extract_public_keys(self, pubkey_api_data):
+        error = self.public_key_api_error
+        if not isinstance(pubkey_api_data, dict):
+            raise error(
+                f"Payload is not a dict but: {str(pubkey_api_data)[:100]}",
+                "public_key_api.format_error",
+            )
+        try:
+            public_keys = pubkey_api_data["public_keys"]
+        except KeyError:
+            raise error(
+                "Payload misses 'public_keys' attribute", "public_key_api.format_error"
+            )
+
+        if not isinstance(public_keys, list):
+            raise error(
+                "Payload 'public_keys' attribute is not a list",
+                "public_key_api.format_error",
+            )
+
+        expected_attributes = {"key", "key_identifier"}
+        result = []
+        for public_key in public_keys:
+            if not isinstance(public_key, dict):
+                raise error(
+                    f"Key is not a dict but: {public_key}",
+                    "public_key_api.format_error",
+                )
+
+            attributes = set(public_key)
+            if not expected_attributes <= attributes:
+                raise error(
+                    "Missing attribute in key: "
+                    f"{sorted(expected_attributes - attributes)}",
+                    "public_key_api.format_error",
+                )
+
+            result.append(
+                {"key": public_key["key"], "key_id": public_key["key_identifier"]}
+            )
+        self._public_keys_cache.set(now=time.time(), value=result)
+        return result
 
     def _get_cached_public_keys(self):
         return self._public_keys_cache.get(now=time.time())
