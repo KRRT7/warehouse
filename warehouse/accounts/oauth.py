@@ -59,8 +59,118 @@ class IOAuthProviderService(Interface):
         """
 
 
+class _OAuthClientBase:
+    """
+    Shared OAuth 2.0 authorization-code flow for identity verification.
+
+    Subclasses configure the provider via class attributes.
+    """
+
+    # Used for both the ``<PROVIDER>.oauth.*`` settings and the callback route.
+    PROVIDER: str
+    AUTHORIZE_URL: str
+    TOKEN_URL: str
+    USER_API_URL: str
+    # Provider-specific parameters added to the authorize URL / token request.
+    EXTRA_AUTHORIZE_PARAMS: dict[str, str] = {}
+    EXTRA_TOKEN_PARAMS: dict[str, str] = {}
+
+    def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.redirect_uri = redirect_uri
+
+    @classmethod
+    def create_service(cls, context, request: Request) -> Self:
+        """
+        Create the client from request settings.
+        """
+        settings = request.registry.settings
+        redirect_uri = request.route_url(
+            f"manage.account.associations.{cls.PROVIDER}.callback"
+        )
+
+        return cls(
+            client_id=settings[f"{cls.PROVIDER}.oauth.client_id"],
+            client_secret=settings[f"{cls.PROVIDER}.oauth.client_secret"],
+            redirect_uri=redirect_uri,
+        )
+
+    def generate_authorize_url(self, state: str) -> str:
+        """
+        Generate the OAuth authorization URL.
+
+        Args:
+            state: CSRF protection token (store in session)
+
+        Returns:
+            Authorization URL to redirect user to
+        """
+        params = {
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "state": state,
+            **self.EXTRA_AUTHORIZE_PARAMS,
+        }
+        return f"{self.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
+
+    def exchange_code_for_token(self, code: str) -> dict[str, str]:
+        """
+        Exchange authorization code for access token.
+
+        Args:
+            code: Authorization code from the provider callback
+
+        Returns:
+            Dict with 'access_token', 'token_type', etc.
+
+        Raises:
+            requests.HTTPError: If token exchange fails
+        """
+        response = requests.post(
+            self.TOKEN_URL,
+            data={
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "code": code,
+                "redirect_uri": self.redirect_uri,
+                **self.EXTRA_TOKEN_PARAMS,
+            },
+            headers={"Accept": "application/json"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data: dict[str, str] = response.json()
+        return data
+
+    def get_user_info(self, access_token: str) -> dict[str, str | int]:
+        """
+        Fetch user information from the provider API.
+
+        Args:
+            access_token: OAuth access token
+
+        Returns:
+            Dict with user info including 'id' and the username.
+
+        Raises:
+            requests.HTTPError: If API request fails
+        """
+        response = requests.get(
+            self.USER_API_URL,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {access_token}",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        data: dict[str, str | int] = response.json()
+        return data
+
+
 @implementer(IOAuthProviderService)
-class GitHubAppClient:
+class GitHubAppClient(_OAuthClientBase):
     """
     GitHub App client for user authentication and future repository access.
 
@@ -79,106 +189,16 @@ class GitHubAppClient:
     See: https://docs.github.com/en/apps/creating-github-apps
     """
 
+    # GitHub Apps don't request scopes at authorization time: permissions are
+    # configured in the GitHub App settings and apply automatically.
+    PROVIDER = "github"
     AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
     TOKEN_URL = "https://github.com/login/oauth/access_token"  # noqa: S105
     USER_API_URL = "https://api.github.com/user"
 
-    def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.redirect_uri = redirect_uri
-
-    @classmethod
-    def create_service(cls, context, request: Request) -> Self:
-        """
-        Create GitHubAppClient from request settings.
-        """
-        settings = request.registry.settings
-        redirect_uri = request.route_url("manage.account.associations.github.callback")
-
-        return cls(
-            client_id=settings["github.oauth.client_id"],
-            client_secret=settings["github.oauth.client_secret"],
-            redirect_uri=redirect_uri,
-        )
-
-    def generate_authorize_url(self, state: str) -> str:
-        """
-        Generate the GitHub App OAuth authorization URL.
-
-        Unlike OAuth Apps, GitHub Apps don't request scopes at authorization time.
-        Permissions are configured in the GitHub App settings and apply
-        automatically when the user authorizes.
-
-        Args:
-            state: CSRF protection token (store in session)
-
-        Returns:
-            Authorization URL to redirect user to
-        """
-        params = {
-            "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
-            "state": state,
-        }
-        return f"{self.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
-
-    def exchange_code_for_token(self, code: str) -> dict[str, str]:
-        """
-        Exchange authorization code for access token.
-
-        Args:
-            code: Authorization code from GitHub callback
-
-        Returns:
-            Dict with 'access_token', 'token_type', 'scope'
-
-        Raises:
-            requests.HTTPError: If token exchange fails
-        """
-        response = requests.post(
-            self.TOKEN_URL,
-            data={
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "code": code,
-                "redirect_uri": self.redirect_uri,
-            },
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
-        response.raise_for_status()
-        data: dict[str, str] = response.json()
-        return data
-
-    def get_user_info(self, access_token: str) -> dict[str, str | int]:
-        """
-        Fetch user information from GitHub API.
-
-        Args:
-            access_token: OAuth access token
-
-        Returns:
-            Dict with user info including 'id', 'login', 'email', etc.
-
-        Raises:
-            requests.HTTPError: If API request fails
-        """
-        response = requests.get(
-            self.USER_API_URL,
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {access_token}",
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        data: dict[str, str | int] = response.json()
-        return data
-
 
 @implementer(IOAuthProviderService)
-class GitLabOAuthClient:
+class GitLabOAuthClient(_OAuthClientBase):
     """
     GitLab OAuth client for user authentication.
 
@@ -196,101 +216,12 @@ class GitLabOAuthClient:
     See: https://docs.gitlab.com/ee/api/oauth2.html
     """
 
+    PROVIDER = "gitlab"
     AUTHORIZE_URL = "https://gitlab.com/oauth/authorize"
     TOKEN_URL = "https://gitlab.com/oauth/token"  # noqa: S105
     USER_API_URL = "https://gitlab.com/api/v4/user"
-
-    def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.redirect_uri = redirect_uri
-
-    @classmethod
-    def create_service(cls, context, request: Request) -> Self:
-        """
-        Create GitLabOAuthClient from request settings.
-        """
-        settings = request.registry.settings
-        redirect_uri = request.route_url("manage.account.associations.gitlab.callback")
-
-        return cls(
-            client_id=settings["gitlab.oauth.client_id"],
-            client_secret=settings["gitlab.oauth.client_secret"],
-            redirect_uri=redirect_uri,
-        )
-
-    def generate_authorize_url(self, state: str) -> str:
-        """
-        Generate the GitLab OAuth authorization URL.
-
-        Args:
-            state: CSRF protection token (store in session)
-
-        Returns:
-            Authorization URL to redirect user to
-        """
-        params = {
-            "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
-            "response_type": "code",
-            "state": state,
-            "scope": "read_user",
-        }
-        return f"{self.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
-
-    def exchange_code_for_token(self, code: str) -> dict[str, str]:
-        """
-        Exchange authorization code for access token.
-
-        Args:
-            code: Authorization code from GitLab callback
-
-        Returns:
-            Dict with 'access_token', 'token_type', 'expires_in', etc.
-
-        Raises:
-            requests.HTTPError: If token exchange fails
-        """
-        response = requests.post(
-            self.TOKEN_URL,
-            data={
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": self.redirect_uri,
-            },
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
-        response.raise_for_status()
-        data: dict[str, str] = response.json()
-        return data
-
-    def get_user_info(self, access_token: str) -> dict[str, str | int]:
-        """
-        Fetch user information from GitLab API.
-
-        Args:
-            access_token: OAuth access token
-
-        Returns:
-            Dict with user info including 'id', 'username', 'email', etc.
-
-        Raises:
-            requests.HTTPError: If API request fails
-        """
-        response = requests.get(
-            self.USER_API_URL,
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {access_token}",
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        data: dict[str, str | int] = response.json()
-        return data
+    EXTRA_AUTHORIZE_PARAMS = {"response_type": "code", "scope": "read_user"}
+    EXTRA_TOKEN_PARAMS = {"grant_type": "authorization_code"}
 
 
 class _NullOAuthClientBase:
