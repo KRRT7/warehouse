@@ -62,7 +62,7 @@ from warehouse.rate_limiting.headers import record_rate_limit
 from warehouse.search.queries import SEARCH_FILTER_ORDER, get_opensearch_query
 from warehouse.utils.cors import _CORS_HEADERS
 from warehouse.utils.http import is_safe_url
-from warehouse.utils.paginate import OpenSearchPage, paginate_url_factory
+from warehouse.utils.paginate import OpenSearchPage, page_number, paginate_url_factory
 from warehouse.utils.row_counter import RowCount
 
 if typing.TYPE_CHECKING:
@@ -436,10 +436,7 @@ def search(request):
     classifiers = request.params.getall("c")
     query = get_opensearch_query(request.opensearch, querystring, order, classifiers)
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.")
+    page_num = page_number(request)
 
     try:
         page = OpenSearchPage(

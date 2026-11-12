@@ -78,7 +78,7 @@ from warehouse.subscriptions.models import (
     ACTIVE_SUBSCRIPTION_STATUSES,
     StripeSubscription,
 )
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 
 ACTIVE_RELEASE_WINDOW = dt.timedelta(days=365)
 
@@ -1324,10 +1324,7 @@ def _open_applications(
 def organization_name_list(request: Request) -> dict[str, Any]:
     q = request.params.get("q", "")
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     names_query = (
         request.db.query(OrganizationNameCatalog)

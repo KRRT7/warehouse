@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from paginate_sqlalchemy import SqlalchemyOrmPage as SQLAlchemyORMPage
-from pyramid.httpexceptions import HTTPBadRequest, HTTPSeeOther
+from pyramid.httpexceptions import HTTPSeeOther
 from pyramid.view import view_config
 from sqlalchemy import literal
 
 from warehouse.accounts.models import ProhibitedUserName, User
 from warehouse.admin.views.users import _nuke_user
 from warehouse.authnz import Permissions
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 
 
 @view_config(
@@ -21,10 +21,7 @@ from warehouse.utils.paginate import paginate_url_factory
 def prohibited_usernames(request):
     q = request.params.get("q")
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     prohibited_user_names_query = request.db.query(ProhibitedUserName).order_by(
         ProhibitedUserName.created.desc(), ProhibitedUserName.id.desc()

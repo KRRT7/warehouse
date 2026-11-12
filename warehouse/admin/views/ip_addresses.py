@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload
 from warehouse.accounts.models import UserUniqueLogin
 from warehouse.authnz import Permissions
 from warehouse.ip_addresses.models import BanReason, IpAddress
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 
 if typing.TYPE_CHECKING:
     from pyramid.request import Request
@@ -31,10 +31,7 @@ def ip_address_list(request: Request) -> dict[str, SQLAlchemyORMPage[IpAddress] 
     # TODO: Add search functionality
     q = request.params.get("q")
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     ip_address_query = request.db.query(IpAddress).order_by(IpAddress.id)
 

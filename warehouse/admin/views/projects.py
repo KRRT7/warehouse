@@ -9,7 +9,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from paginate_sqlalchemy import SqlalchemyOrmPage as SQLAlchemyORMPage
-from pyramid.httpexceptions import HTTPBadRequest, HTTPMovedPermanently, HTTPSeeOther
+from pyramid.httpexceptions import HTTPMovedPermanently, HTTPSeeOther
 from pyramid.view import view_config
 from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
@@ -48,7 +48,7 @@ from warehouse.observations.models import OBSERVATION_KIND_MAP, ObservationKind
 from warehouse.packaging.models import File, JournalEntry, Project, Release, Role
 from warehouse.packaging.tasks import update_release_description
 from warehouse.search.tasks import reindex_project as _reindex_project
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 from warehouse.utils.project import (
     archive_project,
     clear_project_quarantine,
@@ -356,10 +356,7 @@ def project_detail(project, request):
     uses_session=True,
 )
 def project_observations_list(project, request):
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     observations_query = (
         request.db.query(project.Observation)
@@ -450,10 +447,7 @@ def releases_list(project, request):
             request.current_route_path(project_name=project.normalized_name)
         )
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     releases_query = (
         request.db.query(Release)

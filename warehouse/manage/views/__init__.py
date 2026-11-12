@@ -9,7 +9,6 @@ import pyqrcode
 
 from paginate_sqlalchemy import SqlalchemyOrmPage as SQLAlchemyORMPage
 from pyramid.httpexceptions import (
-    HTTPBadRequest,
     HTTPNotFound,
     HTTPOk,
     HTTPSeeOther,
@@ -111,7 +110,7 @@ from warehouse.packaging.models import (
 from warehouse.rate_limiting import IRateLimiter
 from warehouse.utils import otp
 from warehouse.utils.http import is_safe_url
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 from warehouse.utils.project import (
     DELETE_FILE_ACKNOWLEDGMENTS,
     DELETE_PROJECT_ACKNOWLEDGMENTS,
@@ -2572,10 +2571,7 @@ def delete_project_role(project, request):
     has_translations=True,
 )
 def manage_project_history(project, request):
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.")
+    page_num = page_number(request)
 
     project_events_query = (
         request.db.query(Project.Event)

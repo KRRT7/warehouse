@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from paginate_sqlalchemy import SqlalchemyOrmPage as SQLAlchemyORMPage
-from pyramid.httpexceptions import HTTPBadRequest, HTTPNotFound, HTTPSeeOther
+from pyramid.httpexceptions import HTTPNotFound, HTTPSeeOther
 from pyramid.view import view_config, view_defaults
 from sqlalchemy.exc import NoResultFound
 from webob.multidict import MultiDict
@@ -42,7 +42,7 @@ from warehouse.organizations.models import (
 from warehouse.packaging import Project
 from warehouse.packaging.models import JournalEntry
 from warehouse.utils.organization import confirm_team
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 
 
 @view_defaults(
@@ -446,10 +446,7 @@ class ManageTeamRolesViews:
     has_translations=True,
 )
 def manage_team_history(team, request):
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.")
+    page_num = page_number(request)
 
     events_query = (
         request.db.query(Team.Event)

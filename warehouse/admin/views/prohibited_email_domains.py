@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from paginate_sqlalchemy import SqlalchemyOrmPage as SQLAlchemyORMPage
-from pyramid.httpexceptions import HTTPBadRequest, HTTPSeeOther
+from pyramid.httpexceptions import HTTPSeeOther
 from pyramid.view import view_config
 
 from warehouse.accounts.models import ProhibitedEmailDomain
 from warehouse.accounts.utils import prohibit_email_domain, tld_extractor
 from warehouse.authnz import Permissions
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 
 
 @view_config(
@@ -20,10 +20,7 @@ from warehouse.utils.paginate import paginate_url_factory
 def prohibited_email_domains(request):
     q = request.params.get("q")
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     prohibited_email_domains_query = request.db.query(ProhibitedEmailDomain).order_by(
         ProhibitedEmailDomain.created.desc(), ProhibitedEmailDomain.id.desc()

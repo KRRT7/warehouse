@@ -101,7 +101,7 @@ from warehouse.subscriptions.models import StripeSubscriptionStatus
 from warehouse.subscriptions.services import MockStripeBillingService
 from warehouse.utils.http import is_safe_url
 from warehouse.utils.organization import confirm_organization
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 from warehouse.utils.project import confirm_project
 
 
@@ -1527,10 +1527,7 @@ def delete_organization_role(organization, request):
     has_translations=True,
 )
 def manage_organization_history(organization, request):
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.")
+    page_num = page_number(request)
 
     events_query = (
         request.db.query(Organization.Event)

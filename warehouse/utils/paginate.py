@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from paginate import Page
+from pyramid.httpexceptions import HTTPBadRequest
 
 
 class _OpenSearchWrapper:
@@ -62,3 +63,11 @@ def paginate_url_factory(request, query_arg="page"):
         return request.current_route_path(_query=query_seq)
 
     return make_url
+
+
+def page_number(request, query_arg="page"):
+    """Parse the requested page number, rejecting non-integer values."""
+    try:
+        return int(request.params.get(query_arg, 1))
+    except ValueError:
+        raise HTTPBadRequest(f"'{query_arg}' must be an integer.") from None

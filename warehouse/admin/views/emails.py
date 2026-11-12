@@ -5,7 +5,7 @@ import io
 import shlex
 
 from paginate_sqlalchemy import SqlalchemyOrmPage as SQLAlchemyORMPage
-from pyramid.httpexceptions import HTTPBadRequest, HTTPNotFound, HTTPSeeOther
+from pyramid.httpexceptions import HTTPNotFound, HTTPSeeOther
 from pyramid.view import view_config
 from sqlalchemy import String, cast, or_
 from sqlalchemy.exc import NoResultFound
@@ -15,7 +15,7 @@ from warehouse.authnz import Permissions
 from warehouse.email import send_email
 from warehouse.email.ses.models import EmailMessage
 from warehouse.events.tags import EventTag
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 
 
 @view_config(
@@ -28,10 +28,7 @@ from warehouse.utils.paginate import paginate_url_factory
 def email_list(request):
     q = request.params.get("q")
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     email_query = request.db.query(EmailMessage).order_by(
         EmailMessage.created.desc(), EmailMessage.id

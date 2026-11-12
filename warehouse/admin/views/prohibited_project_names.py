@@ -27,7 +27,7 @@ from warehouse.packaging.models import (
     Role,
 )
 from warehouse.utils.http import is_safe_url
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 from warehouse.utils.project import prohibit_and_remove_project
 
 if typing.TYPE_CHECKING:
@@ -44,10 +44,7 @@ if typing.TYPE_CHECKING:
 def prohibited_project_names(request):
     q = request.params.get("q")
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     prohibited_project_names_query = request.db.query(ProhibitedProjectName).order_by(
         ProhibitedProjectName.name

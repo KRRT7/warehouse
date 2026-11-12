@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from paginate_sqlalchemy import SqlalchemyOrmPage as SQLAlchemyORMPage
-from pyramid.httpexceptions import HTTPBadRequest, HTTPNotFound, HTTPSeeOther
+from pyramid.httpexceptions import HTTPNotFound, HTTPSeeOther
 from pyramid.view import view_config
 from sqlalchemy import ColumnElement, Select, delete, func, or_, select
 from sqlalchemy.orm import Query, selectinload
@@ -18,7 +18,7 @@ from warehouse.integrations.vulnerabilities.models import (
     VulnerabilityRecord,
 )
 from warehouse.packaging.models import Release
-from warehouse.utils.paginate import paginate_url_factory
+from warehouse.utils.paginate import page_number, paginate_url_factory
 
 if TYPE_CHECKING:
     from pyramid.request import Request
@@ -69,10 +69,7 @@ def _get_or_404(request: Request, source: str, vuln_id: str) -> VulnerabilityRec
 def vulnerability_list(request: Request) -> dict[str, Any]:
     q: str | None = request.params.get("q")
 
-    try:
-        page_num = int(request.params.get("page", 1))
-    except ValueError:
-        raise HTTPBadRequest("'page' must be an integer.") from None
+    page_num = page_number(request)
 
     # paginate_sqlalchemy's SqlalchemyOrmPage needs a legacy Query; everywhere
     # else in this view we use ORM 2.0 `select()`.
