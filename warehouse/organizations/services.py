@@ -653,24 +653,12 @@ class DatabaseOrganizationService:
         period: RateLimitPeriod | None,
     ) -> str | None:
         organization = self.get_organization(organization_id)
-        previous = organization.project_create_ratelimit_string
-        organization.project_create_ratelimit_count = count
-        organization.project_create_ratelimit_period = (
-            period if count is not None else None
-        )
-
-        organization.record_event(
+        return organization.set_project_create_ratelimit(
+            count=count,
+            period=period,
             tag=EventTag.Organization.OrganizationProjectCreateRateLimitChange,
             request=request,
-            additional={
-                "old_project_create_ratelimit_string": previous,
-                "new_project_create_ratelimit_string": (
-                    organization.project_create_ratelimit_string
-                ),
-                "actor": request.user.username,
-            },
         )
-        return organization.project_create_ratelimit_string
 
     def add_organization_project(self, organization_id, project_id):
         """

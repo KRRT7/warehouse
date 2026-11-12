@@ -384,22 +384,12 @@ class DatabaseUserService:
         period: RateLimitPeriod | None,
     ) -> str | None:
         user = self.get_user(user_id)
-        previous = user.project_create_ratelimit_string
-        user.project_create_ratelimit_count = count
-        user.project_create_ratelimit_period = period if count is not None else None
-
-        user.record_event(
+        return user.set_project_create_ratelimit(
+            count=count,
+            period=period,
             tag=EventTag.Account.ProjectCreateRateLimitChange,
             request=request,
-            additional={
-                "old_project_create_ratelimit_string": previous,
-                "new_project_create_ratelimit_string": (
-                    user.project_create_ratelimit_string
-                ),
-                "actor": request.user.username,
-            },
         )
-        return user.project_create_ratelimit_string
 
     def disable_password(self, user_id, request, reason=None):
         user = self.get_user(user_id)

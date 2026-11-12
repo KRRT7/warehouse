@@ -28,10 +28,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from warehouse import db
 from warehouse.authnz import Permissions
-from warehouse.constants import RateLimitPeriod
 from warehouse.events.models import HasEvents
 from warehouse.ip_addresses.models import IpAddress
 from warehouse.observations.models import HasObservations, HasObservers, ObservationKind
+from warehouse.rate_limiting.models import HasProjectCreateRateLimit
 from warehouse.sitemap.models import SitemapMixin
 from warehouse.utils.attrs import make_repr
 from warehouse.utils.db import orm_session_from_obj
@@ -69,7 +69,14 @@ class DisableReason(enum.Enum):
     AdminInitiated = "admin initiated"
 
 
-class User(SitemapMixin, HasObservers, HasObservations, HasEvents, db.Model):
+class User(
+    SitemapMixin,
+    HasObservers,
+    HasObservations,
+    HasEvents,
+    HasProjectCreateRateLimit,
+    db.Model,
+):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("length(username) <= 50", name="users_valid_username_length"),
@@ -115,19 +122,6 @@ class User(SitemapMixin, HasObservers, HasObservations, HasEvents, db.Model):
         TZDateTime, server_default=sql.func.now()
     )
     disabled_for: Mapped[DisableReason | None]
-
-    project_create_ratelimit_count: Mapped[int | None] = mapped_column(
-        comment=(
-            "Project creation rate limit count, e.g. the 20 in '20 per hour'. "
-            "NULL means no override: the configured default applies."
-        ),
-    )
-    project_create_ratelimit_period: Mapped[RateLimitPeriod | None] = mapped_column(
-        comment=(
-            "Period the count is measured over. Must be NULL exactly when "
-            "project_create_ratelimit_count is NULL."
-        ),
-    )
 
     totp_secret: Mapped[int | None] = mapped_column(LargeBinary(length=20))
     last_totp_value: Mapped[str | None]
@@ -306,19 +300,6 @@ class User(SitemapMixin, HasObservers, HasObservations, HasEvents, db.Model):
                 self.prohibit_password_reset,
             ]
         )
-
-    @property
-    def project_create_ratelimit_string(self) -> str | None:
-        """Composed `limits`-syntax string, or None when no override is set."""
-        count = self.project_create_ratelimit_count
-        period = self.project_create_ratelimit_period
-        if count is None and period is None:
-            return None
-        if count is None or period is None:
-            raise ValueError(
-                "Project creation rate limit requires both count and period"
-            )
-        return f"{count} per {period.value}"
 
     @property
     def active_account_recoveries(self):
